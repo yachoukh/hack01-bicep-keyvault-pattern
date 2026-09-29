@@ -1,0 +1,86 @@
+trigger:
+  branches:
+    include:
+      - '*'
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  serviceConnection: sc-copilot-hack-sandbox
+  resourceGroup: rg-copilot-hack-deploy
+  location: swedencentral
+
+stages:
+  - stage: Validate
+    displayName: Validate Bicep
+    jobs:
+      - job: Validate
+        displayName: Build and lint
+        steps:
+          - checkout: self
+          - script: |
+              az bicep install
+              mkdir -p "$(Build.ArtifactStagingDirectory)"
+              find . -name '*.bicep' -not -path './.git/*' -print | sort | while read -r file; do
+                output="${file#./}"
+                output="${output//\//_}"
+                output="${output%.bicep}.json"
+                echo "Building and linting ${file}"
+                az bicep build --file "${file}" --outfile "$(Build.ArtifactStagingDirectory)/${output}"
+                az bicep lint --file "${file}"
+              done
+            displayName: Build and lint Bicep files
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: compiled-arm
+            displayName: Publish compiled ARM template
+
+  - stage: WhatIf
+    displayName: What-if
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - job: WhatIf
+        displayName: Deployment what-if
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: Run group what-if
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                az deployment group what-if `
+                  --resource-group $(resourceGroup) `
+                  --template-file infra/main.bicep `
+                  --parameters infra/main.bicepparam
+
+  - stage: Deploy
+    displayName: Deploy (solution or ready/* branches)
+    dependsOn: WhatIf
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/solution'), startsWith(variables['Build.SourceBranch'], 'refs/heads/ready/')))
+    jobs:
+      - deployment: Deploy
+        displayName: Deploy approved solution
+        environment: sandbox
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: Deploy Bicep
+                  inputs:
+                    azureSubscription: $(serviceConnection)
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      $result = az deployment group create `
+                        --resource-group $(resourceGroup) `
+                        --name hack01-$(Build.BuildId) `
+                        --template-file infra/main.bicep `
+                        --parameters infra/main.bicepparam | ConvertFrom-Json
+                      $result.properties.outputs | ConvertTo-Json -Depth 10

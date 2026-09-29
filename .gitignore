@@ -1,0 +1,16 @@
+# Bicep build output from the documented local validation commands.
+infra/main.json
+infra/modules/*/main.json
+playground/insecure-keyvault.json
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/mcp.json
+
+# Azure CLI and local state
+.azure/
+.env
+*.log

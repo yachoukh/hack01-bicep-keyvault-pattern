@@ -1,0 +1,12 @@
+using './main.bicep'
+
+param location = 'swedencentral'
+param environment = 'dev'
+param application = 'hack'
+param owner = 'hackathon'
+param costCenter = 'CC-1234'
+param dataClassification = 'internal'
+param sharedResourceGroupName = 'rg-copilot-hack-shared'
+param lawName = 'law-copilot-hack'
+param vnetName = 'vnet-copilot-hack'
+param subnetName = 'snet-private-endpoints'
